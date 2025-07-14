@@ -1,24 +1,10 @@
-#include <SFML/Graphics.hpp>
+#include "Game.hpp"
 
-int main()
-{
-    sf::RenderWindow window(sf::VideoMode(200, 200), "SFML works!");
-    sf::CircleShape shape(100.f);
-    shape.setFillColor(sf::Color::Green);
+int main() {
+  sf::Vector2u window_size{1920, 1080};
+  
+  Game game(window_size, "Olivias game", sf::Style::Default);
+  game.run();
 
-    while (window.isOpen())
-    {
-        sf::Event event;
-        while (window.pollEvent(event))
-        {
-            if (event.type == sf::Event::Closed)
-                window.close();
-        }
-
-        window.clear();
-        window.draw(shape);
-        window.display();
-    }
-
-    return 0;
+  return 0;
 }
