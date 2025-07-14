@@ -24,7 +24,14 @@ file(GLOB_RECURSE SOURCES
 )
 
 # Create the executable
-add_executable(OliviasGame ${SOURCES})
+add_executable(OliviasGame
+    src/Game.cpp
+    src/functions.cpp
+    main.cpp
+)
+
+message("SOURCES: ${SOURCES}")
+
 set_target_properties(OliviasGame PROPERTIES WIN32_EXECUTABLE TRUE)
 
 # Link SFML libraries
