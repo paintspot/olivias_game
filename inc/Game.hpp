@@ -1,80 +1,227 @@
 #pragma once
-#include <SFML/Graphics.hpp>
-#include "interpolated.hpp"
 #include "functions.hpp"
+#include "interpolated.hpp"
+#include <SFML/Graphics.hpp>
 
-#define START_POS {200.0f, 200.0f}
+#define JUMP_LENGTH 1.3f
+#define FROG_SCALE 5.0f
+#define START_POS { 200.0f, 800.0f }
+
+struct AnimationFrame {
+  sf::IntRect rect;
+  float duration; // time this frame is shown (in seconds)
+};
+
+class Animation {
+public:
+  void addFrame(sf::IntRect rect, float duration) {
+    m_frames.push_back({rect, duration});
+  }
+
+  void update(float dt) {
+    if (m_frames.empty())
+      return;
+    m_elapsed += dt;
+    while (m_elapsed >= m_frames[m_index].duration) {
+      m_elapsed -= m_frames[m_index].duration;
+      m_index = (m_index + 1) % m_frames.size();
+    }
+  }
+
+  const sf::IntRect &getCurrentFrame() const { return m_frames[m_index].rect; }
+
+  void reset() {
+    m_index = 0;
+    m_elapsed = 0.f;
+  }
+  void setDuration(float animation_duration){
+    float frame_duration = animation_duration/m_frames.size();
+    for (auto& frame : m_frames){
+      frame.duration = frame_duration;
+    }
+  }
+private:
+  std::vector<AnimationFrame> m_frames;
+  size_t m_index = 0;
+  float m_elapsed = 0.f;
+};
+
+enum class Direction {
+  Left,
+  Right
+};
+
+class Character {
+public:
+  Character(const sf::Texture &texture, sf::Vector2f position)
+      : m_direction(Direction::Right) {
+    m_sprite.setTexture(texture);
+    m_sprite.setPosition(position);
+    m_sprite.setScale(FROG_SCALE, FROG_SCALE); // Default (facing right)
+  }
+
+  void setupAnimations() {
+    for (int i = 0; i < 7; i++) {
+      m_idleAnimation.addFrame({48 * i, 0, 48, 48}, 0.1f);
+      m_hopAnimation.addFrame({48 * i, 48, 48, 48}, 0.1f);
+    }
+    m_currentAnimation = &m_idleAnimation;
+  }
+
+  void update(float dt) {
+    if (m_isHopping) {
+      m_hopTimer += dt;
+      if (m_hopTimer >= m_hopDuration) {
+        playIdle();
+        m_isHopping = false;
+      }
+    }
+  
+    m_currentAnimation->update(dt);
+    m_sprite.setTextureRect(m_currentAnimation->getCurrentFrame());
+  }
+
+  void setPosition(sf::Vector2f pos) {
+    m_sprite.setPosition(pos);
+  }
+  
+  sf::Vector2f getPosition() const {
+    return m_sprite.getPosition();
+  }
+
+  void draw(sf::RenderWindow &window) {
+    window.draw(m_sprite);
+  }
+
+  void face(Direction dir) {
+    if (m_direction != dir) {
+      m_direction = dir;
+      if (dir == Direction::Left) {
+        m_sprite.getScale();
+        m_sprite.setScale(-FROG_SCALE, FROG_SCALE);
+        m_sprite.setOrigin(48, 0); // Flip around vertical center
+      } else {
+        m_sprite.setScale(FROG_SCALE, FROG_SCALE);
+        m_sprite.setOrigin(0, 0);
+      }
+    }
+  }
+
+  void playIdle() {
+    if (m_currentAnimation != &m_idleAnimation) {
+      m_currentAnimation = &m_idleAnimation;
+      m_currentAnimation->reset();
+    }
+  }
+
+  void playHop(float duration) {
+    m_hopAnimation.setDuration(duration);
+    m_hopDuration = duration;
+    m_hopTimer = 0.f;
+    m_isHopping = true;
+  
+    if (m_currentAnimation != &m_hopAnimation) {
+      m_currentAnimation = &m_hopAnimation;
+      m_currentAnimation->reset();
+    }
+  }
+
+private:
+  sf::Sprite m_sprite;
+  Animation m_idleAnimation;
+  Animation m_hopAnimation;
+  Animation *m_currentAnimation = nullptr;
+  Direction m_direction;
+  bool m_isHopping = false;
+  float m_hopTimer = 0.f;
+  float m_hopDuration = 0.f;
+};
 
 class EventHandler {
-public:
-  EventHandler(sf::RenderWindow &window, sf::RectangleShape &rectangle)
-      : m_window(window), m_rectangle(rectangle) {}
-
-  void handleEvents(sf::Event event, Interpolated<sf::Vector2f> &rectangle_pos) {
-    sf::Vector2f new_pos = m_rectangle.getPosition();
-    switch (event.type) {
-    case sf::Event::KeyPressed:
-      if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
-        rectangle_pos = {new_pos.x - 1000, new_pos.y};
-        rectangle_pos.setDuration(1.0f);
-        rectangle_pos.transition = TransitionFunction::EaseOutElastic;
-      } else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right)) {
-        rectangle_pos = {new_pos.x + 1000, new_pos.y};
-        rectangle_pos.setDuration(1.0f);
-        rectangle_pos.transition = TransitionFunction::EaseOutElastic;
-      }
-      if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Escape)) {
+  public:
+    EventHandler(sf::RenderWindow &window, Character &character)
+        : m_window(window), m_character(character) {}
+  
+    void handleEvents(sf::Event event, Interpolated<sf::Vector2f> &pos) {
+      sf::Vector2f new_pos = m_character.getPosition();
+  
+      switch (event.type) {
+      case sf::Event::KeyPressed:
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left)) {
+          pos = {new_pos.x - 100, new_pos.y};
+          pos.setDuration(JUMP_LENGTH);
+          pos.transition = TransitionFunction::EaseInOutElastic;
+          m_character.face(Direction::Left);
+          m_character.playHop(JUMP_LENGTH);
+        } else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) {
+          pos = {new_pos.x + 100, new_pos.y};
+          pos.setDuration(JUMP_LENGTH);
+          pos.transition = TransitionFunction::EaseInOutElastic;
+          m_character.face(Direction::Right);
+          m_character.playHop(JUMP_LENGTH);
+        }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Escape)) {
+          m_window.close();
+        }
+        break;
+  
+      case sf::Event::Closed:
         m_window.close();
+        break;
+  
+      default:
+        break;
       }
-      break;
-
-    case sf::Event::Closed:
-      m_window.close();
-      break;
-
-    default:
-      break;
     }
-  }
+  
+  private:
+    sf::RenderWindow &m_window;
+    Character &m_character;
+  };
 
-private:
-  sf::RenderWindow &m_window;
-  sf::RectangleShape &m_rectangle;
-};
-
-class Game {
-public:
-  Game(sf::Vector2u window_size, std::string const &title, uint32_t style)
-      : m_window(sf::VideoMode({window_size.x, window_size.y}), title, style),
-        m_window_size(window_size), 
-        m_rectangle(START_POS),
-        m_rectangle_pos(START_POS),
-        m_event_handler(m_window, m_rectangle) {
-    m_rectangle.setFillColor(sf::Color::Red);
-    m_rectangle.setPosition(200, 200);
-  }
-
-  void run() {
-    while (m_window.isOpen()) {
-      sf::Event event;
-      while (m_window.pollEvent(event)) {
-        m_event_handler.handleEvents(event, m_rectangle_pos);
+  class Game {
+    public:
+      Game(sf::Vector2u window_size, std::string const &title, uint32_t style)
+          : m_window(sf::VideoMode({window_size.x, window_size.y}), title, style),
+            m_window_size(window_size),
+            m_character(m_texture, START_POS),
+            m_sprite_pos(START_POS),
+            m_event_handler(m_window, m_character) {
+    
+        if (!m_texture.loadFromFile("./assets/images/Frog_Sheet.png")) {
+          throw std::runtime_error("Failed to load spritesheet");
+        }
+    
+        m_character.setupAnimations();
       }
-      render();
-    }
-  }
-
-  void render() {
-    m_rectangle.setPosition(m_rectangle_pos);
-    m_window.clear();
-    m_window.draw(m_rectangle);
-    m_window.display();
-  }
-
-private:
-  sf::RenderWindow m_window;
-  sf::Vector2u m_window_size;
-  sf::RectangleShape m_rectangle;
-  Interpolated<sf::Vector2f> m_rectangle_pos;
-  EventHandler m_event_handler;
-};
+    
+      void run() {
+        sf::Clock clock;
+        while (m_window.isOpen()) {
+          sf::Event event;
+          while (m_window.pollEvent(event)) {
+            m_event_handler.handleEvents(event, m_sprite_pos);
+          }
+    
+          float dt = clock.restart().asSeconds();
+          m_character.setPosition(m_sprite_pos);
+          m_character.update(dt);
+    
+          render();
+        }
+      }
+    
+      void render() {
+        m_window.clear();
+        m_character.draw(m_window);
+        m_window.display();
+      }
+    
+    private:
+      sf::RenderWindow m_window;
+      sf::Vector2u m_window_size;
+      sf::Texture m_texture;
+      Character m_character;
+      Interpolated<sf::Vector2f> m_sprite_pos;
+      EventHandler m_event_handler;
+    };
