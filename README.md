@@ -1,0 +1,1 @@
+In build folder: cmake --build .
